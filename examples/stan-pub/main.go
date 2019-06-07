@@ -89,12 +89,21 @@ func main() {
 		ch <- true
 	}
 
+	sub, err := sc.NatsConn().SubscribeSync("HANDS_FULL")
+
 	if !async {
-		err = sc.Publish(subj, msg)
-		if err != nil {
-			log.Fatalf("Error during publish: %v\n", err)
+		for i := 0; i < 5; i++ {
+			if nMsgs, _, _ := sub.Pending(); nMsgs > 0 {
+				msg, _ := sub.NextMsg(100 * time.Millisecond)
+				fmt.Printf(string(msg.Data))
+			}
+
+			err = sc.Publish(subj, msg)
+			if err != nil {
+				log.Fatalf("Error during publish: %v\n", err)
+			}
+			log.Printf("Published [%s] : '%s'\n", subj, msg)
 		}
-		log.Printf("Published [%s] : '%s'\n", subj, msg)
 	} else {
 		glock.Lock()
 		guid, err = sc.PublishAsync(subj, msg, acb)
