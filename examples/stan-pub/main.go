@@ -14,6 +14,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
@@ -92,12 +93,33 @@ func main() {
 	sub, err := sc.NatsConn().SubscribeSync("HANDS_FULL")
 
 	if !async {
-		for i := 0; i < 5; i++ {
-			if nMsgs, _, _ := sub.Pending(); nMsgs > 0 {
-				msg, _ := sub.NextMsg(100 * time.Millisecond)
-				fmt.Printf(string(msg.Data))
+		for {
+			fmt.Printf("Verifying for pending messages in HANDS_FULL\n")
+			if msgNum, _, _ := sub.Pending(); msgNum > 0 {
+				fmt.Printf("Message found\n")
+				rcvd, _ := sub.NextMsg(1 * time.Second)
+				rcvdMsg := rcvd.Data
+				if bytes.Compare(rcvdMsg, []byte("0")) == 0 {
+					fmt.Printf("Value of message told us to stop\n")
+					waitForPermission := true
+					for waitForPermission {
+						for msgNum, _, _ := sub.Pending(); msgNum < 1; {
+						}
+						fmt.Printf("New message received\n")
+						rcvd, _ := sub.NextMsg(1 * time.Second)
+						rcvdMsg = rcvd.Data
+
+						if bytes.Compare(rcvdMsg, []byte("1")) == 0 {
+							fmt.Printf("Message told us to resume sending\n")
+							waitForPermission = false
+						} else {
+							fmt.Printf("Message told us to remain stopped\n")
+						}
+					}
+				}
 			}
 
+			fmt.Printf("Going to publish message\n")
 			err = sc.Publish(subj, msg)
 			if err != nil {
 				log.Fatalf("Error during publish: %v\n", err)
