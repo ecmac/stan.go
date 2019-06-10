@@ -15,6 +15,7 @@
 package stan
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -88,6 +89,11 @@ type Conn interface {
 	// example, closing the wrapped NATS conn will put the NATS Streaming Conn
 	// in an invalid state.
 	NatsConn() *nats.Conn
+}
+
+type savedMsg struct {
+	subject string
+	data []byte
 }
 
 const (
@@ -193,6 +199,10 @@ var DefaultOptions = GetDefaultOptions()
 
 // Option is a function on the options for a connection.
 type Option func(*Options) error
+
+var savedMsgs = make([]savedMsg, 0)
+
+var stop = false
 
 // NatsURL is an Option to set the URL the client should connect to.
 // The url can contain username/password semantics. e.g. nats://derek:pass@localhost:4222
@@ -841,5 +851,15 @@ func (sc *conn) processMsg(raw *nats.Msg) {
 		b, _ := ack.Marshal()
 		// FIXME(dlc) - Async error handler? Retry?
 		nc.Publish(ackSubject, b)
+	}
+}
+
+func (sub *nats.Subscription) verifyLimits() {
+	for numMsg, _, _ := sub.Pending(); numMsg < 0 {}
+	msg, _ := sub.NextMsg()
+	if bytes.Compare(msg.Data, []byte("0")) == 0 {
+		stop = true
+	} else {
+		stop = false
 	}
 }
