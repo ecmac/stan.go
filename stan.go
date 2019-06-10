@@ -97,6 +97,10 @@ type savedMsg struct {
 	ch chan error
 }
 
+type mySubscription struct {
+	sub *nats.Subscription
+}
+
 const (
 	// Client send connID in ConnectRequest and PubMsg, and server
 	// listens and responds to client PINGs. The validity of the
@@ -469,10 +473,7 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 		c.pingSub = nil
 	}
 
-	handsFullSub, err := c.nc.SubscribeSync("HANDS_FULL")
-	fmt.Printf("%v", handsFullSub.IsValid())
-	go verifyLimits(handsFullSub)
-
+	go c.verifyLimits()
 	go c.keepPublishing()
 
 	return &c, nil
@@ -863,14 +864,18 @@ func (sc *conn) processMsg(raw *nats.Msg) {
 	}
 }
 
-func verifyLimits(subPointer *nats.Subscription) {
-	sub := *subPointer
+func (sc *conn) verifyLimits() {
+	sub, _ := sc.nc.SubscribeSync("HANDS_FULL")
+
 	for {
-		if numMsg, _, _ := sub.Pending(); numMsg >= 0 {
+		if numMsg, _, _ := sub.Pending(); numMsg > 0 {
+			fmt.Printf("Received message at %v\n", time.Now())
 			msg, _ := sub.NextMsg(time.Second * 1)
 			if bytes.Compare(msg.Data, []byte("0")) == 0 {
+				fmt.Printf("Supposed to stop at %v\n", time.Now())
 				stop = true
 			} else {
+				fmt.Printf("Supposed to go at %v\n", time.Now())
 				stop = false
 			}
 		}

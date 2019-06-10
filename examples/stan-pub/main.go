@@ -95,7 +95,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Error during publish: %v\n", err)
 			}
-			log.Printf("Published [%s] : '%s'\n", subj, msg)
+			log.Printf("Published [%s] : '%v'\n", subj, time.Now())
 		}
 	} else {
 		glock.Lock()
