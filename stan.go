@@ -94,6 +94,7 @@ type Conn interface {
 type savedMsg struct {
 	subject string
 	data []byte
+	ch chan error
 }
 
 const (
@@ -468,6 +469,12 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 		c.pingSub = nil
 	}
 
+	handsFullSub, err := c.nc.SubscribeSync("HANDS_FULL")
+	fmt.Printf("%v", handsFullSub.IsValid())
+	go verifyLimits(handsFullSub)
+
+	go c.keepPublishing()
+
 	return &c, nil
 }
 
@@ -703,10 +710,12 @@ func (sc *conn) Publish(subject string, data []byte) error {
 	// a publish call is blocked in pubAckChan but cleanupOnClose()
 	// is trying to push the error to this channel.
 	ch := make(chan error, 1)
-	_, err := sc.publishAsync(subject, data, nil, ch)
-	if err == nil {
-		err = <-ch
-	}
+	toSave := savedMsg{subject: subject, data: data, ch: ch}
+	savedMsgs = append(savedMsgs, toSave)
+
+	// sc.publishAsync(subject, data, nil, ch)
+
+	err := <-ch
 	return err
 }
 
@@ -854,12 +863,26 @@ func (sc *conn) processMsg(raw *nats.Msg) {
 	}
 }
 
-func (sub *nats.Subscription) verifyLimits() {
-	for numMsg, _, _ := sub.Pending(); numMsg < 0 {}
-	msg, _ := sub.NextMsg()
-	if bytes.Compare(msg.Data, []byte("0")) == 0 {
-		stop = true
-	} else {
-		stop = false
+func verifyLimits(subPointer *nats.Subscription) {
+	sub := *subPointer
+	for {
+		if numMsg, _, _ := sub.Pending(); numMsg >= 0 {
+			msg, _ := sub.NextMsg(time.Second * 1)
+			if bytes.Compare(msg.Data, []byte("0")) == 0 {
+				stop = true
+			} else {
+				stop = false
+			}
+		}
+	}
+}
+
+func (sc *conn) keepPublishing() {
+	for {
+		if !stop && len(savedMsgs) > 0 {
+			var svdMsg savedMsg
+			svdMsg, savedMsgs = savedMsgs[0], savedMsgs[1:]
+			sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+		}
 	}
 }
