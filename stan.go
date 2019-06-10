@@ -716,8 +716,7 @@ func (sc *conn) Publish(subject string, data []byte) error {
 
 	// sc.publishAsync(subject, data, nil, ch)
 
-	err := <-ch
-	return err
+	return nil
 }
 
 // PublishAsync will publish to the cluster on pubPrefix+subject and asynchronously
@@ -869,13 +868,13 @@ func (sc *conn) verifyLimits() {
 
 	for {
 		if numMsg, _, _ := sub.Pending(); numMsg > 0 {
-			fmt.Printf("Received message at %v\n", time.Now())
+			//fmt.Printf("Received message at %v\n", time.Now())
 			msg, _ := sub.NextMsg(time.Second * 1)
 			if bytes.Compare(msg.Data, []byte("0")) == 0 {
-				fmt.Printf("Supposed to stop at %v\n", time.Now())
+				//fmt.Printf("Supposed to stop at %v\n", time.Now())
 				stop = true
 			} else {
-				fmt.Printf("Supposed to go at %v\n", time.Now())
+				//fmt.Printf("Supposed to go at %v\n", time.Now())
 				stop = false
 			}
 		}
@@ -887,7 +886,10 @@ func (sc *conn) keepPublishing() {
 		if !stop && len(savedMsgs) > 0 {
 			var svdMsg savedMsg
 			svdMsg, savedMsgs = savedMsgs[0], savedMsgs[1:]
-			sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+			_, err := sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+			if err == nil {
+				err = <-svdMsg.ch
+			}
 		}
 	}
 }
