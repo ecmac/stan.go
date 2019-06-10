@@ -112,7 +112,9 @@ func main() {
 
 	mcb := func(msg *stan.Msg) {
 		i++
-		printMsg(msg, i)
+		if i%300 == 0 {
+			printMsg(msg, i)
+		}
 	}
 
 	startOpt := stan.StartAt(pb.StartPosition_NewOnly)
