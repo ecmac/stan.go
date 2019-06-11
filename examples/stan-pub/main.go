@@ -90,13 +90,13 @@ func main() {
 	}
 
 	if !async {
-		for i := 0; i < 1000000; i++ {
+		for i := 0; i < 300; i++ {
 			err = sc.Publish(subj, msg)
 			if err != nil {
 				log.Fatalf("Error during publish: %v\n", err)
 			}
 			if i%10 == 0 {
-				log.Printf("Published [%s] : '%v'\n", subj, i)
+				// log.Printf("Published [%s] : '%v'\n", subj, i)
 			}
 		}
 	} else {

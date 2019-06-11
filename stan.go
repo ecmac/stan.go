@@ -711,10 +711,17 @@ func (sc *conn) Publish(subject string, data []byte) error {
 	// a publish call is blocked in pubAckChan but cleanupOnClose()
 	// is trying to push the error to this channel.
 	ch := make(chan error, 1)
-	toSave := savedMsg{subject: subject, data: data, ch: ch}
-	savedMsgs = append(savedMsgs, toSave)
-
-	// sc.publishAsync(subject, data, nil, ch)
+	if stop {
+		toSave := savedMsg{subject: subject, data: data, ch: ch}
+		savedMsgs = append(savedMsgs, toSave)
+	} else {
+		fmt.Printf("Publicando mensagem normalmente\n")
+		_, err := sc.publishAsync(subject, data, nil, ch)
+		if err == nil {
+			err = <-ch
+		}
+		return err
+	}
 
 	return nil
 }
@@ -887,9 +894,15 @@ func (sc *conn) keepPublishing() {
 			var svdMsg savedMsg
 			svdMsg, savedMsgs = savedMsgs[0], savedMsgs[1:]
 			_, err := sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+			fmt.Printf("Publicando mensagem\n")
 			if err == nil {
 				err = <-svdMsg.ch
 			}
+		} else if stop {
+			fmt.Printf("Aguardando término de limpeza no servidor\n")
+			fmt.Printf("Mensagens na fila de publicação: %v", len(savedMsgs))
+		} else if len(savedMsgs) <= 0 {
+			// fmt.Printf("Aguardando mais mensagens a serem publicadas\n")
 		}
 	}
 }
