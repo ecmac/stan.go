@@ -473,9 +473,8 @@ func Connect(stanClusterID, clientID string, options ...Option) (Conn, error) {
 		c.pingSub = nil
 	}
 
-	go c.verifyLimits()
-	go c.keepPublishing()
-
+	//go c.verifyLimits()
+	//go c.keepPublishing()
 	return &c, nil
 }
 
@@ -710,19 +709,57 @@ func (sc *conn) Publish(subject string, data []byte) error {
 	// Need to make this a buffered channel of 1 in case
 	// a publish call is blocked in pubAckChan but cleanupOnClose()
 	// is trying to push the error to this channel.
+	
+	
+	sub, _ := sc.nc.SubscribeSync("HANDS_FULL")
+
+	if numMsg, _, _ := sub.Pending(); numMsg > 0 {
+		//fmt.Printf("PENDING: ", numMsg)
+		//fmt.Printf("Received message at %v\n", time.Now())
+		msg, _ := sub.NextMsg(time.Second * 1)
+		if bytes.Compare(msg.Data, []byte("0")) == 0 {
+			//fmt.Printf("Supposed to stop at %v\n", time.Now())
+			stop = true
+			//fmt.Println("STOP: ",stop)
+		} else {
+			//fmt.Printf("Supposed to go at %v\n", time.Now())
+			stop = false
+		}
+	}
+	
+	
+	
+	
 	ch := make(chan error, 1)
+	//fmt.Println(stop,"   ", time.Now())
 	if stop {
+		//fmt.Println("STOP")
 		toSave := savedMsg{subject: subject, data: data, ch: ch}
 		savedMsgs = append(savedMsgs, toSave)
 	} else {
-		fmt.Printf("Publicando mensagem normalmente\n")
+		if len(savedMsgs) > 0 {
+			var svdMsg savedMsg
+			svdMsg, savedMsgs = savedMsgs[0], savedMsgs[1:]
+			//_, err := sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+			err := sc.Publish(svdMsg.subject, svdMsg.data)
+			//fmt.Printf("Publicando mensagem ", svdMsg.data)
+			if err == nil {
+				err = <-svdMsg.ch
+			}
+		} else if stop {
+			//fmt.Printf("Aguardando término de limpeza no servidor\n")
+			//fmt.Printf("Mensagens na fila de publicação: %v", len(savedMsgs))
+		} else if len(savedMsgs) <= 0 {
+		 	//fmt.Printf("Aguardando mais mensagens a serem publicadas\n")
+		}
+		//fmt.Printf("Publicando mensagem normalmente\n")
 		_, err := sc.publishAsync(subject, data, nil, ch)
 		if err == nil {
 			err = <-ch
 		}
 		return err
 	}
-
+	fmt.Println(string(data))
 	return nil
 }
 
@@ -873,19 +910,19 @@ func (sc *conn) processMsg(raw *nats.Msg) {
 func (sc *conn) verifyLimits() {
 	sub, _ := sc.nc.SubscribeSync("HANDS_FULL")
 
-	for {
 		if numMsg, _, _ := sub.Pending(); numMsg > 0 {
-			//fmt.Printf("Received message at %v\n", time.Now())
+			fmt.Printf("PENDING: ", numMsg)
+			fmt.Printf("Received message at %v\n", time.Now())
 			msg, _ := sub.NextMsg(time.Second * 1)
 			if bytes.Compare(msg.Data, []byte("0")) == 0 {
-				//fmt.Printf("Supposed to stop at %v\n", time.Now())
+				fmt.Printf("Supposed to stop at %v\n", time.Now())
 				stop = true
+				fmt.Println("STOP: ",stop)
 			} else {
-				//fmt.Printf("Supposed to go at %v\n", time.Now())
+				fmt.Printf("Supposed to go at %v\n", time.Now())
 				stop = false
 			}
 		}
-	}
 }
 
 func (sc *conn) keepPublishing() {
@@ -893,8 +930,9 @@ func (sc *conn) keepPublishing() {
 		if !stop && len(savedMsgs) > 0 {
 			var svdMsg savedMsg
 			svdMsg, savedMsgs = savedMsgs[0], savedMsgs[1:]
-			_, err := sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
-			fmt.Printf("Publicando mensagem\n")
+			//_, err := sc.publishAsync(svdMsg.subject, svdMsg.data, nil, svdMsg.ch)
+			err := sc.Publish(svdMsg.subject, svdMsg.data)
+			fmt.Printf("Publicando mensagem ", svdMsg.data)
 			if err == nil {
 				err = <-svdMsg.ch
 			}
@@ -902,7 +940,7 @@ func (sc *conn) keepPublishing() {
 			fmt.Printf("Aguardando término de limpeza no servidor\n")
 			fmt.Printf("Mensagens na fila de publicação: %v", len(savedMsgs))
 		} else if len(savedMsgs) <= 0 {
-			// fmt.Printf("Aguardando mais mensagens a serem publicadas\n")
+			 fmt.Printf("Aguardando mais mensagens a serem publicadas\n")
 		}
 	}
 }
